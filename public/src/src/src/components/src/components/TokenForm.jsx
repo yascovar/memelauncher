@@ -1,8 +1,14 @@
 import React, { useState } from "react"
+import {
+  createMint,
+  getOrCreateAssociatedTokenAccount,
+  mintTo,
+  setAuthority,
+  AuthorityType,
+} from "@solana/spl-token"
+import { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction } from "@solana/web3.js"
 import { useWallet } from "@solana/wallet-adapter-react"
-import { mintToken } from "../utils/mintToken"
-import { revokeAllAuthorities } from "../utils/revokeAuthority"
-import { createLiquidity } from "../utils/createLiquidity"
+import { checkTrustedToken } from "../utils/checkTrustedToken"
 
 export default function TokenForm() {
   const wallet = useWallet()
@@ -12,147 +18,128 @@ export default function TokenForm() {
   const [website, setWebsite] = useState("")
   const [twitter, setTwitter] = useState("")
   const [telegram, setTelegram] = useState("")
-  const [fee, setFee] = useState("")
-  const [mint, setMint] = useState(null)
+  const [sellFee, setSellFee] = useState("")
+  const [mintAddress, setMintAddress] = useState("")
   const [isTrusted, setIsTrusted] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [message, setMessage] = useState("")
+  const [loading, setLoading] = useState(false)
+  const connection = new Connection("https://api.mainnet-beta.solana.com")
 
-  const handleMint = async () => {
+  const handleCreateToken = async () => {
     if (!wallet.connected) {
-      alert("Connect your wallet first.")
+      alert("Please connect your wallet first")
       return
     }
 
-    setIsLoading(true)
-    setMessage("Creating token...")
+    setLoading(true)
 
     try {
-      const { mint } = await mintToken(
-        wallet,
+      const payer = wallet.adapter.publicKey
+      const mint = Keypair.generate()
+      const decimals = 9
+      const lamports = parseInt(supply) * 10 ** decimals
+
+      const mintTx = new Transaction().add(
+        await createMint(
+          connection,
+          payer,
+          payer,
+          payer,
+          decimals,
+          mint
+        )
+      )
+
+      const signature = await wallet.sendTransaction(mintTx, connection, {
+        signers: [mint],
+      })
+      await connection.confirmTransaction(signature)
+
+      const tokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        payer,
+        mint.publicKey,
+        payer
+      )
+
+      await mintTo(
+        connection,
+        payer,
+        mint.publicKey,
+        tokenAccount.address,
+        payer,
+        lamports
+      )
+
+      const trusted = await checkTrustedToken(mint.publicKey.toBase58())
+      setIsTrusted(trusted)
+
+      const newToken = {
+        mint: mint.publicKey.toBase58(),
         name,
         symbol,
         supply,
+        sellFee,
         website,
         twitter,
         telegram,
-        fee
-      )
-      setMint(mint.toBase58())
+      }
 
-      // Simulate liquidity creation (mock)
-      await createLiquidity(mint.toBase58(), supply, 1)
+      const existing = JSON.parse(localStorage.getItem("launched_tokens")) || []
+      existing.push(newToken)
+      localStorage.setItem("launched_tokens", JSON.stringify(existing))
 
-      setMessage("✅ Token created successfully!")
+      setMintAddress(mint.publicKey.toBase58())
     } catch (err) {
-      console.error(err)
-      setMessage("❌ Token creation failed.")
+      console.error("Error creating token:", err)
+      alert("Token creation failed")
     }
 
-    setIsLoading(false)
-  }
-
-  const handleRevokeAll = async () => {
-    if (!mint) return alert("Create token first.")
-
-    setMessage("Revoking authorities...")
-
-    try {
-      await revokeAllAuthorities(wallet, mint)
-      setIsTrusted(true)
-      setMessage("✅ All authorities revoked.")
-    } catch (err) {
-      console.error(err)
-      setMessage("❌ Failed to revoke authorities.")
-    }
+    setLoading(false)
   }
 
   return (
-    <div className="max-w-md mx-auto bg-white rounded-lg shadow p-6 space-y-4">
-      <h2 className="text-xl font-bold text-center">🚀 Launch Your Memecoin</h2>
+    <div className="max-w-md mx-auto mt-8 p-6 bg-white rounded shadow">
+      <h1 className="text-2xl font-bold mb-4">🚀 Create Your MemeCoin</h1>
 
-      <input
-        type="text"
-        placeholder="Token Name"
-        className="w-full border rounded p-2"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="Symbol"
-        className="w-full border rounded p-2"
-        value={symbol}
-        onChange={(e) => setSymbol(e.target.value)}
-      />
-      <input
-        type="number"
-        placeholder="Total Supply (e.g. 1000000000)"
-        className="w-full border rounded p-2"
-        value={supply}
-        onChange={(e) => setSupply(e.target.value)}
-      />
+      <label className="block mb-2">Token Name</label>
+      <input type="text" className="w-full p-2 border rounded mb-4" value={name} onChange={(e) => setName(e.target.value)} />
 
-      <input
-        type="text"
-        placeholder="Website (optional)"
-        className="w-full border rounded p-2"
-        value={website}
-        onChange={(e) => setWebsite(e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="Twitter (optional)"
-        className="w-full border rounded p-2"
-        value={twitter}
-        onChange={(e) => setTwitter(e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="Telegram (optional)"
-        className="w-full border rounded p-2"
-        value={telegram}
-        onChange={(e) => setTelegram(e.target.value)}
-      />
+      <label className="block mb-2">Token Symbol</label>
+      <input type="text" className="w-full p-2 border rounded mb-4" value={symbol} onChange={(e) => setSymbol(e.target.value)} />
 
-      <input
-        type="number"
-        placeholder="Sell Fee (%)"
-        className="w-full border rounded p-2"
-        value={fee}
-        onChange={(e) => setFee(e.target.value)}
-      />
+      <label className="block mb-2">Total Supply</label>
+      <input type="number" className="w-full p-2 border rounded mb-4" value={supply} onChange={(e) => setSupply(e.target.value)} />
+
+      <label className="block mb-2">Sell Fee (%)</label>
+      <input type="number" step="0.1" className="w-full p-2 border rounded mb-4" value={sellFee} onChange={(e) => setSellFee(e.target.value)} />
+
+      <label className="block mb-2">Website (optional)</label>
+      <input type="text" className="w-full p-2 border rounded mb-4" value={website} onChange={(e) => setWebsite(e.target.value)} />
+
+      <label className="block mb-2">Twitter (optional)</label>
+      <input type="text" className="w-full p-2 border rounded mb-4" value={twitter} onChange={(e) => setTwitter(e.target.value)} />
+
+      <label className="block mb-2">Telegram (optional)</label>
+      <input type="text" className="w-full p-2 border rounded mb-4" value={telegram} onChange={(e) => setTelegram(e.target.value)} />
 
       <button
-        onClick={handleMint}
-        disabled={isLoading}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded"
+        className="w-full bg-blue-600 text-white py-2 rounded mt-2"
+        onClick={handleCreateToken}
+        disabled={loading}
       >
-        {isLoading ? "Creating..." : "Create Token"}
+        {loading ? "Creating..." : "Create Token"}
       </button>
 
-      {mint && (
-        <>
-          <p className="text-sm break-words">
-            ✅ Mint Address: <strong>{mint}</strong>
-          </p>
-          <button
-            onClick={handleRevokeAll}
-            className="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-4 mt-2 rounded"
-          >
-            Revoke All Authorities
-          </button>
-        </>
+      {mintAddress && (
+        <div className="mt-4 break-words">
+          ✅ Token Created: <strong>{mintAddress}</strong>
+        </div>
       )}
 
       {isTrusted && (
         <div className="mt-4 px-4 py-3 bg-green-50 border border-green-500 text-green-700 rounded-md">
-          ✅ <span className="font-semibold">Trusted Token:</span> All authorities revoked.
+          ✅ <strong>Trusted Token:</strong> All authorities revoked.
         </div>
-      )}
-
-      {message && (
-        <p className="text-center text-sm font-medium mt-4">{message}</p>
       )}
     </div>
   )
