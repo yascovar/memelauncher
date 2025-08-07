@@ -1,27 +1,39 @@
-import { setAuthority, AuthorityType } from '@solana/spl-token'
-import { Connection, clusterApiUrl, PublicKey } from '@solana/web3.js'
+import {
+  AuthorityType,
+  setAuthority,
+} from "@solana/spl-token"
+import { Connection, PublicKey } from "@solana/web3.js"
 
-export async function revokeAllAuthorities(wallet, mintAddress) {
-  const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed')
-  const mintPubkey = new PublicKey(mintAddress)
+export async function revokeAuthority(wallet, mintAddress, type) {
+  if (!wallet.publicKey) throw new Error("Wallet not connected")
 
-  for (const type of [
-    AuthorityType.MintTokens,
-    AuthorityType.FreezeAccount,
-    AuthorityType.AccountOwner,
-    AuthorityType.CloseAccount
-  ]) {
-    try {
-      await setAuthority(
-        connection,
-        wallet,
-        mintPubkey,
-        wallet.publicKey,
-        type,
-        null
-      )
-    } catch (err) {
-      console.warn(`Skipping ${type}:`, err.message)
-    }
+  const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed")
+  const payer = wallet
+  const mintPublicKey = new PublicKey(mintAddress)
+
+  let authorityType
+  switch (type) {
+    case "mint":
+      authorityType = AuthorityType.MintTokens
+      break
+    case "freeze":
+      authorityType = AuthorityType.FreezeAccount
+      break
+    case "update":
+      authorityType = AuthorityType.AuthorityType
+      break
+    default:
+      throw new Error("Invalid authority type")
   }
+
+  await setAuthority(
+    connection,
+    payer,
+    mintPublicKey,
+    payer.publicKey,
+    authorityType,
+    null // revoke = set to null
+  )
+
+  console.log(`✅ Revoked ${type} authority`)
 }
