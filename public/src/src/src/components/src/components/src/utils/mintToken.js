@@ -2,22 +2,25 @@ import {
   createMint,
   getOrCreateAssociatedTokenAccount,
   mintTo,
-  setAuthority,
-  AuthorityType
-} from '@solana/spl-token'
-import { Connection, PublicKey, clusterApiUrl, Keypair } from '@solana/web3.js'
+} from "@solana/spl-token"
+import { Connection } from "@solana/web3.js"
 
-export async function mintToken(wallet, formData) {
-  const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed')
+export async function mintToken(wallet, name, symbol, supply, website, twitter, telegram) {
+  if (!wallet.publicKey) throw new Error("Wallet not connected")
+
+  const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed")
   const payer = wallet
+
+  // Create mint
   const mint = await createMint(
     connection,
     payer,
     payer.publicKey,
     null,
-    9
+    9 // Decimals
   )
 
+  // Create associated token account
   const tokenAccount = await getOrCreateAssociatedTokenAccount(
     connection,
     payer,
@@ -25,16 +28,24 @@ export async function mintToken(wallet, formData) {
     payer.publicKey
   )
 
-  const supplyAmount = Number(formData.supply) * 10 ** 9
-
+  // Mint tokens to wallet
   await mintTo(
     connection,
     payer,
     mint,
     tokenAccount.address,
     payer.publicKey,
-    supplyAmount
+    supply * 10 ** 9 // Convert to base units
   )
 
-  return mint.toBase58()
+  console.log("✅ Token minted successfully!")
+  console.log("Name:", name)
+  console.log("Symbol:", symbol)
+  console.log("Total Supply:", supply)
+  console.log("Website:", website)
+  console.log("Twitter:", twitter)
+  console.log("Telegram:", telegram)
+  console.log("Mint Address:", mint.toBase58())
+
+  return { mint }
 }
