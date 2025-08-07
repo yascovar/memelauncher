@@ -1,132 +1,158 @@
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { mintToken } from '../utils/mintToken'
-import { revokeAuthorities } from '../utils/revokeAuthority'
-import { createSimpleLiquidity } from '../utils/createLiquidity'
-import { useWallet } from '@solana/wallet-adapter-react'
+import React, { useState } from "react"
+import { useWallet } from "@solana/wallet-adapter-react"
+import { mintToken } from "../utils/mintToken"
+import { revokeAllAuthorities } from "../utils/revokeAuthority"
+import { createLiquidity } from "../utils/createLiquidity"
 
 export default function TokenForm() {
   const wallet = useWallet()
-  const [name, setName] = useState('')
-  const [symbol, setSymbol] = useState('')
-  const [supply, setSupply] = useState('')
-  const [website, setWebsite] = useState('')
-  const [twitter, setTwitter] = useState('')
-  const [telegram, setTelegram] = useState('')
-  const [mintAddress, setMintAddress] = useState('')
+  const [name, setName] = useState("")
+  const [symbol, setSymbol] = useState("")
+  const [supply, setSupply] = useState("")
+  const [website, setWebsite] = useState("")
+  const [twitter, setTwitter] = useState("")
+  const [telegram, setTelegram] = useState("")
+  const [fee, setFee] = useState("")
+  const [mint, setMint] = useState(null)
+  const [isTrusted, setIsTrusted] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [message, setMessage] = useState("")
 
-  const handleMintToken = async () => {
-    try {
-      const result = await mintToken(wallet, name, symbol, Number(supply), website, twitter, telegram)
-      setMintAddress(result.mint.toBase58())
-      alert('Token minted successfully!')
-    } catch (error) {
-      console.error(error)
-      alert('Failed to mint token.')
-    }
-  }
-
-  const handleRevokeAuthorities = async () => {
-    if (!mintAddress) {
-      alert('Mint address not found.')
+  const handleMint = async () => {
+    if (!wallet.connected) {
+      alert("Connect your wallet first.")
       return
     }
 
+    setIsLoading(true)
+    setMessage("Creating token...")
+
     try {
-      await revokeAuthorities(wallet, mintAddress)
-      alert('Authorities revoked!')
-    } catch (error) {
-      console.error(error)
-      alert('Failed to revoke authorities.')
+      const { mint } = await mintToken(
+        wallet,
+        name,
+        symbol,
+        supply,
+        website,
+        twitter,
+        telegram,
+        fee
+      )
+      setMint(mint.toBase58())
+
+      // Simulate liquidity creation (mock)
+      await createLiquidity(mint.toBase58(), supply, 1)
+
+      setMessage("✅ Token created successfully!")
+    } catch (err) {
+      console.error(err)
+      setMessage("❌ Token creation failed.")
     }
+
+    setIsLoading(false)
   }
 
-  const handleCreateLiquidity = async () => {
-    if (!mintAddress) {
-      alert('Please mint the token first.')
-      return
-    }
+  const handleRevokeAll = async () => {
+    if (!mint) return alert("Create token first.")
+
+    setMessage("Revoking authorities...")
 
     try {
-      const result = await createSimpleLiquidity(wallet, mintAddress)
-      console.log('Liquidity added:', result)
-      alert('Simulated liquidity added! Check console.')
-    } catch (error) {
-      console.error('Liquidity error:', error)
-      alert('Failed to add liquidity.')
+      await revokeAllAuthorities(wallet, mint)
+      setIsTrusted(true)
+      setMessage("✅ All authorities revoked.")
+    } catch (err) {
+      console.error(err)
+      setMessage("❌ Failed to revoke authorities.")
     }
   }
 
   return (
-    <div className="max-w-xl mx-auto space-y-4">
+    <div className="max-w-md mx-auto bg-white rounded-lg shadow p-6 space-y-4">
+      <h2 className="text-xl font-bold text-center">🚀 Launch Your Memecoin</h2>
+
       <input
         type="text"
         placeholder="Token Name"
+        className="w-full border rounded p-2"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        className="w-full p-2 border rounded"
       />
       <input
         type="text"
-        placeholder="Token Symbol"
+        placeholder="Symbol"
+        className="w-full border rounded p-2"
         value={symbol}
         onChange={(e) => setSymbol(e.target.value)}
-        className="w-full p-2 border rounded"
       />
       <input
         type="number"
-        placeholder="Total Supply"
+        placeholder="Total Supply (e.g. 1000000000)"
+        className="w-full border rounded p-2"
         value={supply}
         onChange={(e) => setSupply(e.target.value)}
-        className="w-full p-2 border rounded"
       />
+
       <input
         type="text"
         placeholder="Website (optional)"
+        className="w-full border rounded p-2"
         value={website}
         onChange={(e) => setWebsite(e.target.value)}
-        className="w-full p-2 border rounded"
       />
       <input
         type="text"
         placeholder="Twitter (optional)"
+        className="w-full border rounded p-2"
         value={twitter}
         onChange={(e) => setTwitter(e.target.value)}
-        className="w-full p-2 border rounded"
       />
       <input
         type="text"
         placeholder="Telegram (optional)"
+        className="w-full border rounded p-2"
         value={telegram}
         onChange={(e) => setTelegram(e.target.value)}
-        className="w-full p-2 border rounded"
       />
-      <Button
-        onClick={handleMintToken}
-        className="w-full bg-green-600 text-white p-2 rounded-xl"
+
+      <input
+        type="number"
+        placeholder="Sell Fee (%)"
+        className="w-full border rounded p-2"
+        value={fee}
+        onChange={(e) => setFee(e.target.value)}
+      />
+
+      <button
+        onClick={handleMint}
+        disabled={isLoading}
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded"
       >
-        Create Token
-      </Button>
-      {mintAddress && (
+        {isLoading ? "Creating..." : "Create Token"}
+      </button>
+
+      {mint && (
         <>
-          <Button
-            onClick={handleRevokeAuthorities}
-            className="w-full bg-red-600 text-white p-2 rounded-xl"
+          <p className="text-sm break-words">
+            ✅ Mint Address: <strong>{mint}</strong>
+          </p>
+          <button
+            onClick={handleRevokeAll}
+            className="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-4 mt-2 rounded"
           >
-            Revoke Authorities
-          </Button>
-          <Button
-            onClick={handleCreateLiquidity}
-            className="w-full bg-blue-600 text-white p-2 rounded-xl"
-          >
-            Create Raydium Liquidity (Simple)
-          </Button>
+            Revoke All Authorities
+          </button>
         </>
       )}
-      {mintAddress && (
-        <div className="text-sm text-gray-600 mt-2">
-          Mint Address: <code>{mintAddress}</code>
+
+      {isTrusted && (
+        <div className="mt-4 px-4 py-3 bg-green-50 border border-green-500 text-green-700 rounded-md">
+          ✅ <span className="font-semibold">Trusted Token:</span> All authorities revoked.
         </div>
+      )}
+
+      {message && (
+        <p className="text-center text-sm font-medium mt-4">{message}</p>
       )}
     </div>
   )
